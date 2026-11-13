@@ -1,0 +1,40 @@
+name: public-release
+on:
+  push:
+    tags: ['v*-alpha']
+jobs:
+  verify:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/ci.yml
+  release:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+      - name: Require tag ancestry on main and format gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-alpha$'
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Create GitHub pre-release from verified tag
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "RELEASE_ALREADY_EXISTS=$tag"
+          else
+            gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+              --title "Lin Jianqiu $tag" \
+              --notes "Experimental research preview. Public Java 17 lifecycle, budget, receipt, and recovery demonstrations only. No private Android app, personal data, real model credentials, QQ, or phone actions are included."
+          fi
