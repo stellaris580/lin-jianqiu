@@ -1,0 +1,2 @@
+# Handoff
+Candidate is for maintainer review. Privacy scan, Apache-2.0 license and clean history are prepared; remaining gates are copyright-holder sign-off, GitHub Security Advisories enablement, and explicit approval to create/push the public repository.
