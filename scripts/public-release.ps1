@@ -2,8 +2,9 @@ param(
   [string]$Message = "",
   [string]$Tag = "",
   [string]$AuditEvidence = "",
-  [switch]$Publish,
-  [switch]$DryRun
+  [Parameter(Mandatory=$false)][switch]$Publish,
+  [Parameter(Mandatory=$false)][switch]$DryRun,
+  [Parameter(Mandatory=$false)][switch]$RecoverTag
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
@@ -84,8 +85,39 @@ try { [DateTimeOffset]::Parse($auditedAt) | Out-Null } catch { throw "AUTO_PUBLI
 Write-Output "AUDIT_BOUND_TO_SOURCE=PASS"
 Write-Output "AUDITOR=$auditor"
 Write-Output "AUDITED_AT=$auditedAt"
-if ($Tag -and (git tag -l $Tag)) { throw "TAG_ALREADY_EXISTS $Tag" }
+if ($Tag -and (git tag -l $Tag) -and -not $RecoverTag) { throw "TAG_ALREADY_EXISTS $Tag" }
 if ($Tag -and $Tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha$') { throw "TAG_FORMAT_INVALID $Tag" }
+if ($RecoverTag) {
+  if (-not $Tag) { throw "RECOVER_TAG_REQUIRED" }
+  $ErrorActionPreference = "Continue"
+  $remoteMain = ((git ls-remote origin refs/heads/main) -split '\s+')[0]
+  $remoteCode = $LASTEXITCODE
+  $remoteTag = git ls-remote origin "refs/tags/$Tag"
+  $tagCode = $LASTEXITCODE
+  $ErrorActionPreference = "Stop"
+  if ($remoteCode -ne 0) { throw "RECOVER_REMOTE_UNREACHABLE" }
+  if ($remoteMain -ne (git rev-parse HEAD)) { throw "RECOVER_MAIN_MISMATCH" }
+  if ($tagCode -ne 0) { throw "RECOVER_TAG_QUERY_FAILED" }
+  if ($remoteTag) { throw "TAG_ALREADY_EXISTS $Tag" }
+  if (git tag -l $Tag) {
+    if ((git rev-list -n 1 $Tag) -ne (git rev-parse HEAD)) { throw "RECOVER_LOCAL_TAG_NOT_ON_HEAD" }
+    Write-Output "RECOVER_LOCAL_TAG_PRESENT=YES"
+  } else {
+    $ErrorActionPreference = "Continue"
+    git tag -a $Tag -m "Recovered public release $Tag" 2>&1 | ForEach-Object { Write-Output $_ }
+    $createCode = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($createCode -ne 0) { throw "GIT_TAG_CREATE_FAILED" }
+    Write-Output "RECOVER_LOCAL_TAG_PRESENT=CREATED"
+  }
+  $ErrorActionPreference = "Continue"
+  git push origin $Tag 2>&1 | ForEach-Object { Write-Output $_ }
+  $pushCode = $LASTEXITCODE
+  $ErrorActionPreference = "Stop"
+  if ($pushCode -ne 0) { throw "GIT_PUSH_TAG_FAILED" }
+  Write-Output "PARTIAL_RECOVERY=PASS TAG=$Tag HEAD=$remoteMain"
+  exit 0
+}
 $ErrorActionPreference = "Continue"
 if ($Message -and (git status --short | Measure-Object).Count -gt 0) {
   git add -A 2>&1 | ForEach-Object { Write-Output $_ }
@@ -95,17 +127,20 @@ if ($Message -and (git status --short | Measure-Object).Count -gt 0) {
 git push origin main 2>&1 | ForEach-Object { Write-Output $_ }
 $mainPush = $LASTEXITCODE
 $ErrorActionPreference = "Stop"
-if ($mainPush -ne 0) { throw "GIT_PUSH_MAIN_FAILED" }
+if ($mainPush -ne 0) { throw "PARTIAL_PUBLISH MAIN_PUSHED=false" }
+Write-Output "PUBLISH_STATE=MAIN_PUSHED"
 if ($Tag) {
   $ErrorActionPreference = "Continue"
   git tag -a $Tag -m "Automated public release $Tag" 2>&1 | ForEach-Object { Write-Output $_ }
   $tagCreate = $LASTEXITCODE
   $ErrorActionPreference = "Stop"
-  if ($tagCreate -ne 0) { throw "GIT_TAG_CREATE_FAILED" }
+  if ($tagCreate -ne 0) { throw "PARTIAL_PUBLISH MAIN_PUSHED=true TAG_CREATED=false" }
+  Write-Output "PUBLISH_STATE=TAG_CREATED"
   $ErrorActionPreference = "Continue"
   git push origin $Tag 2>&1 | ForEach-Object { Write-Output $_ }
   $tagPush = $LASTEXITCODE
   $ErrorActionPreference = "Stop"
-  if ($tagPush -ne 0) { throw "GIT_PUSH_TAG_FAILED" }
+  if ($tagPush -ne 0) { throw "PARTIAL_PUBLISH MAIN_PUSHED=true TAG_CREATED=true TAG_PUSHED=false; run -Publish -RecoverTag -Tag $Tag" }
+  Write-Output "PUBLISH_STATE=TAG_PUSHED"
 }
 Write-Output "AUTO_PUBLISH=PUSHED"
