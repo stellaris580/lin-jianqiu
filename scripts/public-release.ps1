@@ -44,7 +44,14 @@ $manifest = ($candidates | Where-Object { $_ -ne 'SOURCE_MANIFEST.sha256' }) | F
   $h = (Get-FileHash (Join-Path $root $_) -Algorithm SHA256).Hash.ToLower()
   "$h  $_"
 }
-[IO.File]::WriteAllText((Join-Path $root 'SOURCE_MANIFEST.sha256'), (($manifest -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+$manifestText = (($manifest -join "`n") + "`n")
+$manifestPath = Join-Path $root 'SOURCE_MANIFEST.sha256'
+[IO.File]::WriteAllText($manifestPath, $manifestText, [Text.UTF8Encoding]::new($false))
+$sha = [Security.Cryptography.SHA256]::Create()
+$snapshotSha = ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($manifestText)))).Replace('-','').ToLower()
+$manifestFileSha = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLower()
+Write-Output "SOURCE_SNAPSHOT_SHA256=$snapshotSha"
+Write-Output "SOURCE_MANIFEST_SHA256=$manifestFileSha"
 Write-Output "PRIVACY_GATE=PASS"
 Write-Output "LICENSE_CHECK=PASS"
 Write-Output "BUILD=PASS"
@@ -53,19 +60,37 @@ Write-Output "WHITELIST_EXPORT=PASS"
 
 if ($DryRun -or -not $Publish) { Write-Output "AUTO_PUBLISH=DRY_RUN"; exit 0 }
 
-# Independent audit is mandatory for a real publish; no self-issued evidence.
+# Independent audit evidence must be bound to the exact source snapshot being published.
 if (-not $AuditEvidence -or -not (Test-Path $AuditEvidence)) { throw "AUTO_PUBLISH=BLOCKED MISSING_INDEPENDENT_AUDIT" }
 $audit = Get-Content $AuditEvidence -Raw
+function Field([string]$name) {
+  $m = [regex]::Match($audit, "(?m)^$([regex]::Escape($name))=(.*)\r?$")
+  if (-not $m.Success) { throw "AUTO_PUBLISH=BLOCKED AUDIT_FIELD_MISSING $name" }
+  return $m.Groups[1].Value.Trim()
+}
 if ($audit -notmatch '(?m)^PRIVACY_AUDIT=PASS[ \t\r]*$' -or $audit -notmatch '(?m)^INDEPENDENT_AUDIT=PASS[ \t\r]*$') {
   throw "AUTO_PUBLISH=BLOCKED AUDIT_NOT_PASS"
 }
+if ((Field 'AUDIT_SOURCE_SNAPSHOT_SHA256') -ne $snapshotSha) { throw "AUTO_PUBLISH=BLOCKED STALE_AUDIT_SNAPSHOT" }
+if ((Field 'AUDIT_MANIFEST_SHA256') -ne $manifestFileSha) { throw "AUTO_PUBLISH=BLOCKED STALE_AUDIT_MANIFEST" }
+$auditor = Field 'AUDITOR'
+if (-not $auditor -or $auditor -match '^(?i:unknown|self|none)$') { throw "AUTO_PUBLISH=BLOCKED AUDITOR_INVALID" }
+$scope = Field 'AUDIT_SCOPE'
+if (-not $scope) { throw "AUTO_PUBLISH=BLOCKED AUDIT_SCOPE_MISSING" }
+$changes = Field 'AUDIT_CHANGES'
+if (-not $changes) { throw "AUTO_PUBLISH=BLOCKED AUDIT_CHANGES_MISSING" }
+$auditedAt = Field 'AUDITED_AT'
+try { [DateTimeOffset]::Parse($auditedAt) | Out-Null } catch { throw "AUTO_PUBLISH=BLOCKED AUDITED_AT_INVALID" }
+Write-Output "AUDIT_BOUND_TO_SOURCE=PASS"
+Write-Output "AUDITOR=$auditor"
+Write-Output "AUDITED_AT=$auditedAt"
+if ($Tag -and (git tag -l $Tag)) { throw "TAG_ALREADY_EXISTS $Tag" }
 if ($Message -and (git status --short | Measure-Object).Count -gt 0) {
   git add -A
   git -c user.name="Lin Jianqiu OSS" -c user.email="oss@example.invalid" commit -m $Message
 }
 git push origin main
 if ($Tag) {
-  if (git tag -l $Tag) { throw "TAG_ALREADY_EXISTS $Tag" }
   git tag -a $Tag -m "Automated public release $Tag"
   git push origin $Tag
 }

@@ -10,6 +10,7 @@ jobs:
   release:
     needs: verify
     runs-on: ubuntu-latest
+    environment: public-release
     permissions:
       contents: write
     steps:
@@ -24,6 +25,7 @@ jobs:
           echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+-alpha$'
           git fetch origin main
           git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+          test "$GITHUB_SHA" = "$(git rev-parse origin/main)"
       - name: Create GitHub pre-release from verified tag
         shell: bash
         env:

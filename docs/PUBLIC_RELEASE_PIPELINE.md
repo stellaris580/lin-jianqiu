@@ -1,18 +1,19 @@
 # Public Release Pipeline
-Whitelist source of truth: `PUBLIC_SOURCE_ALLOWLIST.txt`.
+Whitelist source of truth: `PUBLIC_SOURCE_ALLOWLIST.txt` (explicit files, no wildcards).
 
 Flow:
 
 ```
-public working tree
-  -> whitelist check
-  -> forbidden extension/secret scan
+all worktree files (hidden included)
+  -> exact allowlist / forbidden extension / secret scan
   -> Java 17 build + DEMO_RESULT=PASS
-  -> regenerate SOURCE_MANIFEST.sha256
-  -> dry-run or explicit -Publish
+  -> regenerate canonical SOURCE_MANIFEST.sha256
+  -> source-snapshot SHA256 + manifest SHA256
+  -> external independent audit attestation bound to both hashes
   -> optional commit/tag/push
   -> GitHub Actions CI
-  -> tag-triggered Release workflow (contents: write only in release job)
+  -> public-release environment approval
+  -> tag-triggered Release (only release job has contents:write)
   -> remote verification
 ```
 
@@ -22,10 +23,13 @@ Dry run:
 pwsh scripts/public-release.ps1 -DryRun
 ```
 
-Publish only with an independent audit evidence file containing exact lines `PRIVACY_AUDIT=PASS` and `INDEPENDENT_AUDIT=PASS`:
+Publish only with audit evidence stored outside the repo:
 
 ```powershell
-pwsh scripts/public-release.ps1 -Publish -Message "docs: ..." -Tag v0.1.1-alpha
+pwsh scripts/public-release.ps1 -Publish `
+  -Message "docs: ..." `
+  -Tag v0.1.2-alpha `
+  -AuditEvidence D:\path\to\audit-attestation.txt
 ```
 
-Safety: forbidden files fail closed; missing audit or failing build blocks publishing; tags are never force-moved; existing tags are rejected. CI is read-only. Release has `contents: write` only in the release job. No private Android source, personal data, model credentials, QQ, or phone code is exported.
+Stale evidence (any byte change after audit) is rejected by snapshot and manifest hashes. Tag releases are additionally gated by the `public-release` GitHub Environment required reviewer; see `docs/RELEASE_SECURITY_GATE.md`.
