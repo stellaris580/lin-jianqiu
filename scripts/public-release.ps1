@@ -85,13 +85,27 @@ Write-Output "AUDIT_BOUND_TO_SOURCE=PASS"
 Write-Output "AUDITOR=$auditor"
 Write-Output "AUDITED_AT=$auditedAt"
 if ($Tag -and (git tag -l $Tag)) { throw "TAG_ALREADY_EXISTS $Tag" }
+if ($Tag -and $Tag -notmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha$') { throw "TAG_FORMAT_INVALID $Tag" }
+$ErrorActionPreference = "Continue"
 if ($Message -and (git status --short | Measure-Object).Count -gt 0) {
-  git add -A
-  git -c user.name="Lin Jianqiu OSS" -c user.email="oss@example.invalid" commit -m $Message
+  git add -A 2>&1 | ForEach-Object { Write-Output $_ }
+  git -c user.name="Lin Jianqiu OSS" -c user.email="oss@example.invalid" commit -m $Message 2>&1 | ForEach-Object { Write-Output $_ }
+  if ($LASTEXITCODE -ne 0) { $ErrorActionPreference = "Stop"; throw "GIT_COMMIT_FAILED" }
 }
-git push origin main
+git push origin main 2>&1 | ForEach-Object { Write-Output $_ }
+$mainPush = $LASTEXITCODE
+$ErrorActionPreference = "Stop"
+if ($mainPush -ne 0) { throw "GIT_PUSH_MAIN_FAILED" }
 if ($Tag) {
-  git tag -a $Tag -m "Automated public release $Tag"
-  git push origin $Tag
+  $ErrorActionPreference = "Continue"
+  git tag -a $Tag -m "Automated public release $Tag" 2>&1 | ForEach-Object { Write-Output $_ }
+  $tagCreate = $LASTEXITCODE
+  $ErrorActionPreference = "Stop"
+  if ($tagCreate -ne 0) { throw "GIT_TAG_CREATE_FAILED" }
+  $ErrorActionPreference = "Continue"
+  git push origin $Tag 2>&1 | ForEach-Object { Write-Output $_ }
+  $tagPush = $LASTEXITCODE
+  $ErrorActionPreference = "Stop"
+  if ($tagPush -ne 0) { throw "GIT_PUSH_TAG_FAILED" }
 }
 Write-Output "AUTO_PUBLISH=PUSHED"
