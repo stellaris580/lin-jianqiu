@@ -12,7 +12,6 @@ all worktree files (hidden included)
   -> external independent audit attestation bound to both hashes
   -> optional commit/tag/push
   -> GitHub Actions CI
-  -> public-release environment approval
   -> tag-triggered Release (only release job has contents:write)
   -> remote verification
 ```
@@ -32,4 +31,4 @@ pwsh scripts/public-release.ps1 -Publish `
   -AuditEvidence D:\path\to\audit-attestation.txt
 ```
 
-Stale evidence (any byte change after audit) is rejected by snapshot and manifest hashes. Tag releases are additionally gated by the `public-release` GitHub Environment required reviewer; see `docs/RELEASE_SECURITY_GATE.md`.
+Stale evidence (any byte change after audit) is rejected by snapshot and manifest hashes. Routine releases do not use a GitHub required-reviewer environment. Tag creation must additionally be protected by an external GitHub Ruleset for `v*-alpha`; see `RELEASE_SECURITY_GATE.md`. This is one-time repository configuration, not per-release approval.

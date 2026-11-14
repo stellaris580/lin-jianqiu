@@ -10,7 +10,6 @@ jobs:
   release:
     needs: verify
     runs-on: ubuntu-latest
-    environment: public-release
     permissions:
       contents: write
     steps:

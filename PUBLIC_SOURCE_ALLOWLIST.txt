@@ -17,6 +17,7 @@ docs/QUICKSTART.md
 docs/RELEASE_NOTES_v0.1.0-alpha.md
 docs/RELEASE_SECURITY_GATE.md
 docs/ROLLBACK.md
+docs/UNATTENDED_PUBLISH.md
 docs/UPDATE_RUNBOOK.md
 docs/VERIFIED_RELEASE_ATTESTATION.md
 GITHUB_COMMUNITY_PLAN.md
@@ -37,6 +38,7 @@ README.md
 RELEASE_READINESS.md
 ROADMAP.md
 scripts/public-release.ps1
+scripts/unattended-publish.ps1
 SECURITY.md
 SOURCE_MANIFEST.sha256
 src/main/java/org/example/life/LifeLoopDemo.java

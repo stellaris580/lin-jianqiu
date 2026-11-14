@@ -1,24 +1,24 @@
 # Release Security Gate
 
-## One-time owner setup (required before using tag-triggered Releases)
+Releases are automated. There is **no per-release human approval button**.
 
-In the GitHub repository:
+Controls that remain:
 
-**Settings -> Environments -> New environment -> `public-release`**
+- Tag must match `vX.Y.Z-alpha`.
+- Tag target must be exactly current `main` HEAD.
+- Read-only CI must pass first.
+- Only the release job gets `contents: write`.
+- Existing releases are never overwritten; tags are never moved or force-pushed.
+- CI enforces the explicit source allowlist, canonical `SOURCE_MANIFEST.sha256`, secret/forbidden-file checks and `DEMO_RESULT=PASS`.
 
-Add **Required reviewers** and select `stellaris580` (or the maintainer). Save.
+## Required one-time external control: tag Ruleset
 
-Without this environment rule, a tag push would create a Release without a human approval. The workflow already requires:
+Configure a GitHub Ruleset for `refs/tags/v*-alpha` that restricts tag creation/update/deletion to the trusted maintainer. This is not a per-release approval; it prevents an arbitrary write collaborator from creating a release tag. Until this Ruleset exists, tag protection is **not** enforced by the repository tree and this residual risk must be reported. A GitHub Environment with required reviewers is optional and is NOT required for routine releases.
 
-- the tag must be `vX.Y.Z-alpha`;
-- the tag target must be exactly current `main` HEAD;
-- read-only CI verification must pass first;
-- only the release job receives `contents: write`;
-- existing releases are never overwritten;
-- no tag is moved or force-pushed.
+## Scope expansion
 
-A human reviewer approval is the independent release authorization. This is a one-time repository setting and cannot be enabled by automation without admin permission.
+Routine docs/demo/tests may publish automatically after an independent audit attestation. Adding a new file type or broadening the public allowlist is a scope expansion: the unattended publisher refuses to proceed unless the operator explicitly passes `-ScopeApproved`. Human approval is still required for private Android code, personal memories/persona, QQ/phone credentials, new external services, license changes, or anything outside the public allowlist.
 
-## Failure behavior
+## Attestation limitation
 
-Any failed CI step, tag mismatch, environment rejection, or release-creation error blocks the Release. Direct tags are not trusted as approval.
+The local attestation binds an independent auditor's declared identity to exact snapshot/manifest hashes, but it is not a cryptographic signature by default. Do not describe it as an absolute proof; use a trusted auditing agent and isolate the publish credentials.
